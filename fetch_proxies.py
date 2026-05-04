@@ -5,9 +5,8 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 def decode_base64(data):
-    """尝试解密 base64 字符串（很多订阅节点是base64编码的）"""
+    """尝试解密 base64 字符串"""
     try:
-        # 补齐 padding
         missing_padding = len(data) % 4
         if missing_padding:
             data += '=' * (4 - missing_padding)
@@ -19,10 +18,8 @@ def main():
     # 获取北京时间日期
     tz = timezone(timedelta(hours=8))
     current_date = datetime.now(tz).strftime("%Y-%m-%d")
-    # 为了和之前的IP文件区分，这里加上 proxies_ 前缀
     filename = f"proxies_{current_date}.txt"
 
-    # 目标仓库文件的 Raw 地址列表 (根据你截图中的文件名)
     base_urls = [
         "https://raw.githubusercontent.com/Vanic24/VPN/main/8EB",
         "https://raw.githubusercontent.com/Vanic24/VPN/main/9PB",
@@ -32,37 +29,47 @@ def main():
         "https://raw.githubusercontent.com/Vanic24/VPN/main/Sub3"
     ]
     
-    # 匹配各类代理节点链接的正则表达式 (支持 vmess, vless, trojan, ss, ssr, hysteria, tuic等)
-    proxy_pattern = re.compile(r'(?i)(?:vmess|vless|trojan|ss|ssr|hysteria2?|tuic)://[^\s\'"<>]+')
+    # 规则1：匹配传统的 URI 格式 (例如 vmess://..., vless://...)
+    uri_pattern = re.compile(r'(?i)(?:vmess|vless|trojan|ss|ssr|hysteria2?|tuic)://[^\s\'"<>]+')
+    
+    # 规则2：匹配 Clash 的 YAML 字典格式 (例如 - {name: "...", type: "vless", ...})
+    # 这个正则会把 - { ... } 这一整行提取出来
+    clash_pattern = re.compile(r'-\s*\{.*?type:\s*["\']?(?:vmess|vless|trojan|ss|ssr|hysteria2?|tuic|http|socks5)["\']?.*?\}', re.IGNORECASE)
     
     new_proxies = set()
     
-    # 逐个访问文件并提取节点
     for url in base_urls:
         try:
             resp = requests.get(url, timeout=15)
-            # 如果 main 分支找不到，尝试 master 分支
             if resp.status_code == 404:
                 url = url.replace("/main/", "/master/")
                 resp = requests.get(url, timeout=15)
                 
             if resp.status_code == 200:
                 text = resp.text
-                # 1. 尝试直接提取明文链接
-                links = proxy_pattern.findall(text)
-                new_proxies.update(links)
                 
-                # 2. 如果没有找到明文链接，说明可能是 Base64 编码的订阅文件，尝试解码后提取
-                if not links:
+                # 1. 提取 URI 格式节点
+                uris = uri_pattern.findall(text)
+                new_proxies.update(uris)
+                
+                # 2. 提取 Clash 格式节点
+                clash_nodes = clash_pattern.findall(text)
+                # 清理一下 Clash 节点前后的空格和多余字符，保持格式整洁
+                clash_nodes = [node.strip() for node in clash_nodes]
+                new_proxies.update(clash_nodes)
+                
+                # 3. 如果明文既没有 URI 也没有 Clash 格式，尝试 Base64 解码
+                if not uris and not clash_nodes:
                     decoded_text = decode_base64(text.strip())
                     if decoded_text:
-                        new_proxies.update(proxy_pattern.findall(decoded_text))
+                        new_proxies.update(uri_pattern.findall(decoded_text))
+                        
         except Exception as e:
             print(f"获取 {url} 失败: {e}")
 
     print(f"本次从目标仓库提取到 {len(new_proxies)} 个代理节点。")
 
-    # 读取本地当天的历史记录进行去重
+    # 读取本地历史记录进行去重
     existing_proxies = set()
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
