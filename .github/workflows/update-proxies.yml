@@ -1,0 +1,44 @@
+name: Auto Fetch Proxies
+
+on:
+  schedule:
+    # 这里的 cron 表达式 "0 * * * *" 代表每小时的第 0 分钟执行（即每1小时执行一次）
+    - cron: '0 * * * *'
+  workflow_dispatch: # 支持手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-save-proxies:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Python Script
+        run: python fetch_proxies.py
+
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # 仅添加生成的 proxy txt 文件
+          git add proxies_*.txt
+          
+          if git diff --staged --quiet; then
+            echo "没有提取到新节点，跳过提交"
+          else
+            TZ='Asia/Shanghai' date_str=$(date +'%Y-%m-%d %H:%M:%S')
+            git commit -m "Auto update Proxies: $date_str"
+            git push
+          fi
