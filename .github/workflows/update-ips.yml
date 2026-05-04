@@ -1,0 +1,47 @@
+name: Auto Fetch Cloudflare IPs
+
+on:
+  schedule:
+    # GitHub 的 cron 是基于 UTC 时间的，这里的规则是每 10 分钟运行一次
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # 添加这一行允许你在网页端手动点击按钮来触发测试
+
+permissions:
+  contents: write # 授予写入权限以提交文件
+
+jobs:
+  fetch-and-save:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Python Script
+        run: python fetch_ips.py
+
+      - name: Commit and Push changes
+        run: |
+          # 配置 git 提交者信息为 GitHub 官方机器人
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # 仅添加生成的 txt 文件
+          git add *.txt
+          
+          # 检查是否有内容变更，如果有则提交并推送
+          if git diff --staged --quiet; then
+            echo "没有新的 IP 或文件未发生变动，跳过提交"
+          else
+            # 使用北京时间生成提交记录
+            TZ='Asia/Shanghai' date_str=$(date +'%Y-%m-%d %H:%M:%S')
+            git commit -m "Auto update IPs: $date_str"
+            git push
+          fi
