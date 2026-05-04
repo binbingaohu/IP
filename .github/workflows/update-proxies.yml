@@ -22,7 +22,7 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install requests pyyaml
 
       - name: Run Python Script
         run: python fetch_proxies.py
@@ -33,7 +33,7 @@ jobs:
           git config --local user.name "github-actions[bot]"
           
           # 仅添加生成的 proxy txt 文件
-          git add proxies_*.txt
+          git add *.txt
           
           if git diff --staged --quiet; then
             echo "没有提取到新节点，跳过提交"
