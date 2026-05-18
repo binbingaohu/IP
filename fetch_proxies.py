@@ -5,6 +5,8 @@ import base64
 import urllib.parse
 import requests
 import yaml
+import glob      # 新增：用于查找匹配的文件
+import zipfile   # 新增：用于生成压缩包
 from datetime import datetime, timezone, timedelta
 
 def decode_base64(data):
@@ -81,8 +83,50 @@ def clash_to_uri(p):
         pass
     return None
 
+def archive_last_month_files(tz):
+    """每月1号自动打包上个月的文件为 ZIP，并删除原 TXT 文件"""
+    now = datetime.now(tz)
+    
+    # 仅在每月 1 号执行
+    if now.day == 1:
+        # 计算上个月的年份和月份
+        if now.month == 1:
+            last_year = now.year - 1
+            last_month = 12
+        else:
+            last_year = now.year
+            last_month = now.month - 1
+            
+        month_prefix = f"{last_year}-{last_month:02d}" # 例如：2023-10
+        zip_name = f"{month_prefix}.zip"
+        
+        # 因为每天会运行多次，如果检测到 ZIP 已存在，说明今天已经打包过了，直接跳过
+        if os.path.exists(zip_name):
+            return
+            
+        # 查找上个月的所有明文和订阅 TXT 文件
+        target_files = glob.glob(f"*_{month_prefix}-*.txt")
+        
+        if target_files:
+            print(f"检测到今天是 1 号，开始将上个月 ({month_prefix}) 的 {len(target_files)} 个文件打包...")
+            
+            # 1. 写入 ZIP 压缩包
+            with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_path in target_files:
+                    zipf.write(file_path)
+                    
+            # 2. 删除原 TXT 文件
+            for file_path in target_files:
+                os.remove(file_path)
+                
+            print(f"归档完成！已生成压缩包: {zip_name}，并清空了旧 TXT 文件。")
+
 def main():
     tz = timezone(timedelta(hours=8))
+    
+    # 在抓取新节点前，先执行归档检查
+    archive_last_month_files(tz)
+    
     current_date = datetime.now(tz).strftime("%Y-%m-%d")
     
     # 将会生成两个文件，一个是明文供复制，一个是 Base64 供作为订阅链接导入
@@ -115,7 +159,7 @@ def main():
                 uris = uri_pattern.findall(text)
                 new_proxies.update(uris)
                 
-                # 2. 核心：通过 YAML 解析 Clash 节点并进行翻译！
+                # 2. 核心：通过 YAML 解析 Clash 节点并进行翻译
                 try:
                     config = yaml.safe_load(text)
                     if isinstance(config, dict) and 'proxies' in config:
@@ -151,7 +195,7 @@ def main():
         for node in sorted(all_proxies):
             f.write(node + "\n")
             
-    # 2. 保存为 Base64 订阅 txt (推荐用法：直接把这个文件的链接放入 Nekobox 的订阅设置中)
+    # 2. 保存为 Base64 订阅 txt
     with open(b64_filename, "w", encoding="utf-8") as f:
         all_text = "\n".join(sorted(all_proxies))
         b64_content = base64.b64encode(all_text.encode('utf-8')).decode('utf-8')
