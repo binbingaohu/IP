@@ -27,18 +27,18 @@ jobs:
       - name: Run Python Script
         run: python fetch_proxies.py
 
-      - name: Commit and Push changes
+      - - name: Commit and Push changes
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # 仅添加生成的 proxy txt 文件
-          git add *.txt
+          # 使用 git add -A 会自动添加新生成的 txt 和 zip，同时记录被删除的历史 txt 文件
+          git add -A
           
           if git diff --staged --quiet; then
-            echo "没有提取到新节点，跳过提交"
+            echo "没有提取到新节点或发生文件变更，跳过提交"
           else
             TZ='Asia/Shanghai' date_str=$(date +'%Y-%m-%d %H:%M:%S')
-            git commit -m "Auto update Proxies: $date_str"
+            git commit -m "Auto update Proxies & Archive: $date_str"
             git push
           fi
